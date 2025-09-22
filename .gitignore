@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.env
+
+# Poetry / venv
+.venv/
+venv/
+
+# VS Code
+.vscode/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Данные (ВАЖНО!)
+# Если данные большие, их не стоит хранить в Git.
+# В задании сказано "включить в проект", поэтому для небольших CSV это нормально.
+# Если появится файл с API-ключами, добавьте его сюда, например:
+# secrets.ini
+# api_keys.json
