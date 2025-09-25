@@ -1,77 +1,53 @@
-# -*- coding: utf-8 -*-
+# src/agents/signal_agent.py
 """
-Модуль для генерации торговых сигналов.
-
-Этот модуль отвечает за анализ рыночных данных, индикаторов и настроений,
-чтобы генерировать сигналы на покупку (BUY), продажу (SELL) или удержание (HOLD) (математическая структура сигналов может быть друго)
-для активов в портфеле. Он является "мозгом" системы, предсказывая
-потенциальные движения рынка.
-
-Основные функции:
-- Получение данных: Запрашивает исторические и реальные данные от модуля `data_fetcher`.
-- Обработка данных: Осуществляет предобработку, очистку и нормализацию данных.
-- Моделирование: Использует обученные модели машинного обучения (например,
-  временные ряды, LSTM) или классические индикаторы (RSI, MACD, Moving Averages)
-  для анализа трендов и паттернов.
-- Генерация сигналов: На основе анализа и прогнозов генерирует торговые сигналы
-  для каждого актива.
-- Публикация сигналов: Отправляет сгенерированные сигналы в `risk_manager`
-  для дальнейшей оценки.
-
-Как должно работать?
-signal_agent = SignalAgent()
-signals = signal_agent.generate_signals(asset_data)
-# returns {'BTC': 'BUY', 'ETH': 'HOLD'}
+Generates trading signals based on market data and ML models.
 """
-import pandas as pd
-import joblib # Для загрузки предобученных моделей
+import random
+from typing import Optional
+from src.core.events import MarketDataEvent, SignalEvent
 
 class SignalAgent:
     """
-    Класс для генерации торговых сигналов на основе анализа данных.
-
-    Этот агент использует обученные или предобученные модели для
-    прогнозирования движения цены и выработки рекомендаций.
+    Applies an ML model to market data to generate trading signals.
     """
+    def __init__(self):
+        """Initializes the SignalAgent."""
+        # In a real system, a pre-trained model would be loaded here.
+        # self.model = load_model('path/to/model.pkl')
+        print("SignalAgent: Initialized. (Using a dummy prediction model).")
 
-    def __init__(self, model_path: str = None):
+    def process_market_data(self, market_event: MarketDataEvent) -> Optional[SignalEvent]:
         """
-        Инициализирует SignalAgent и загружает предобученные модели.
-        
+        Processes a market data event and generates a signal.
+
         Args:
-            model_path (str): Путь к файлу с предобученной моделью.
+            market_event: The market data event to process.
+
+        Returns:
+            A SignalEvent if a signal is generated, otherwise None.
         """
-        if model_path:
-            self.model = joblib.load(model_path)
-            print("Предобученная модель успешно загружена.")
+        # In a real system, we would generate features from the market_event
+        # features = self.feature_engine.transform(market_event)
+        # prediction = self.model.predict(features)
+        
+        # --- Dummy Logic ---
+        # Simulate a simple momentum strategy for demonstration
+        if market_event.close > market_event.open:
+            signal_type = 'buy'
+            strength = random.uniform(0.6, 1.0)
+        elif market_event.close < market_event.open:
+            signal_type = 'sell'
+            strength = random.uniform(0.6, 1.0)
         else:
-            self.model = None # Или инициализация новой модели для обучения
-
-    def preprocess_data(self, data: pd.DataFrame) -> pd.DataFrame:
-        """
-        Выполняет предобработку данных перед подачей в модель.
+            signal_type = 'hold'
+            strength = random.uniform(0.0, 0.4)
         
-        Args:
-            data (pd.DataFrame): Сырые данные, полученные от DataCollector.
-            
-        Returns:
-            pd.DataFrame: Предобработанные данные.
-        """
-        # Логика: очистка, нормализация, создание признаков
-        print("Предобработка данных...")
-        return data
-
-    def generate_signals(self, preprocessed_data: pd.DataFrame) -> dict:
-        """
-        Генерирует торговые сигналы (BUY, SELL, HOLD).
-        
-        Args:
-            preprocessed_data (pd.DataFrame): Обработанные данные.
-            
-        Returns:
-            dict: Словарь сигналов, например, {'BTCUSDT': 'BUY', 'ETHUSDT': 'HOLD'}.
-        """
-        print("Генерация торговых сигналов...")
-        # Здесь логика, использующая self.model для прогнозирования
-        signals = {'BTCUSDT': 'BUY', 'ETHUSDT': 'HOLD'}
-        return signals
+        if signal_type != 'hold':
+            print(f"SignalAgent: Generated {signal_type.upper()} signal for {market_event.symbol} with strength {strength:.2f}")
+            return SignalEvent(
+                timestamp=market_event.timestamp,
+                symbol=market_event.symbol,
+                signal_type=signal_type,
+                strength=strength
+            )
+        return None

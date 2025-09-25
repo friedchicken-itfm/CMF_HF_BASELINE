@@ -1,115 +1,74 @@
-# -*-- coding: utf-8 -*-
-
+# src/executor/order_executor.py
 """
-Модуль для исполнения торговых приказов.
-
-Этот модуль отвечает за отправку и исполнение торговых приказов
-на реальной бирже. Он является "руками" системы, осуществляя
-фактические операции с активами.
-
-Основные функции:
-- Подключение к бирже: Устанавливает соединение с торговой биржей, используя
-  API-ключи и секретные ключи.
-- Исполнение приказов: Отправляет приказы на покупку/продажу (market, limit,
-  stop-limit) в соответствии с инструкциями `portfolio_manager`.
-- Обработка статуса: Отслеживает статус отправленных приказов (исполнен,
-  отменен, частично исполнен) и обновляет состояние портфеля.
-- Управление ордерами: Отменяет или изменяет приказы, если это необходимо.
-- Логирование: Ведет подробный журнал всех торговых операций.
-
-Пример использования:
-order_executor = OrderExecutor(api_key, api_secret)
-order_result = order_executor.execute_order('BTC/USDT', 'BUY', 0.01)
+Executes trading orders, either live or in a simulated environment.
 """
-import ccxt # Популярная библиотека для взаимодействия с криптобиржами
-import logging
+from typing import Optional
+from src.core.events import PortfolioDecisionEvent, OrderExecutionEvent
 
 class OrderExecutor:
     """
-    Класс для исполнения торговых приказов на реальной бирже.
-
-    Этот класс является "руками" системы, он отвечает за отправку,
-    исполнение и отслеживание торговых ордеров. Он не принимает решений
-    о торговле, а лишь исполняет то, что ему передает PortfolioManager.
+    Handles the execution of trade orders.
     """
-
-    def __init__(self, exchange_id: str, api_key: str, api_secret: str):
+    def __init__(self, mode: str):
         """
-        Инициализирует OrderExecutor с параметрами биржи.
+        Initializes the OrderExecutor.
 
         Args:
-            exchange_id (str): ID биржи (например, 'binance', 'bybit').
-            api_key (str): Ключ API для подключения к бирже.
-            api_secret (str): Секретный ключ API.
+            mode: 'live' for real trading, 'backtest' for simulation.
         """
-        try:
-            self.exchange = getattr(ccxt, exchange_id)({
-                'apiKey': api_key,
-                'secret': api_secret,
-                'enableRateLimit': True, # Управляет скоростью запросов
-            })
-            print(f"Подключен к бирже {exchange_id.upper()}")
-        except AttributeError:
-            logging.error(f"Неизвестная биржа: {exchange_id}")
-            self.exchange = None
+        if mode not in ['live', 'backtest']:
+            raise ValueError("Mode must be either 'live' or 'backtest'")
+        self.mode = mode
+        print(f"OrderExecutor: Initialized in {mode} mode.")
 
-    def execute_order(self, symbol: str, side: str, amount: float, price: float = None) -> dict:
+    def execute_order(
+        self,
+        decision_event: PortfolioDecisionEvent,
+        market_price: float
+    ) -> Optional[OrderExecutionEvent]:
         """
-        Отправляет торговый приказ на биржу.
+        Executes a given portfolio decision.
 
         Args:
-            symbol (str): Торговая пара (например, 'BTC/USDT').
-            side (str): Тип операции ('buy' или 'sell').
-            amount (float): Количество актива для покупки/продажи.
-            price (float, optional): Цена для лимитного ордера. Если не указана,
-                                     будет использован рыночный ордер.
+            decision_event: The decision to execute.
+            market_price: The current market price for simulation.
 
         Returns:
-            dict: Словарь с информацией об исполненном приказе.
+            An OrderExecutionEvent confirming the trade, or None if failed.
         """
-        if not self.exchange:
-            logging.error("Не удалось подключиться к бирже. Приказ не будет исполнен.")
-            return {"status": "error", "message": "Exchange connection failed"}
-        
-        try:
-            if price:
-                # Отправка лимитного ордера
-                order = self.exchange.create_limit_order(symbol, side, amount, price)
-                logging.info(f"Отправлен лимитный ордер на {symbol}: {order}")
-            else:
-                # Отправка рыночного ордера
-                order = self.exchange.create_market_order(symbol, side, amount)
-                logging.info(f"Отправлен рыночный ордер на {symbol}: {order}")
-            
-            return {"status": "success", "order": order}
+        if self.mode == 'live':
+            # --- Live Trading Logic ---
+            # Here you would integrate with the exchange's API
+            # e.g., client.create_order(...)
+            print(f"LIVE MODE: Would execute {decision_event.action} {decision_event.quantity} of {decision_event.symbol}")
+            # For now, we'll simulate it like a backtest
+            return self._simulate_execution(decision_event, market_price)
 
-        except ccxt.NetworkError as e:
-            logging.error(f"Ошибка сети при исполнении приказа: {e}")
-            return {"status": "error", "message": "Network error"}
-        except ccxt.ExchangeError as e:
-            logging.error(f"Ошибка биржи при исполнении приказа: {e}")
-            return {"status": "error", "message": "Exchange error"}
-        except Exception as e:
-            logging.error(f"Неизвестная ошибка: {e}")
-            return {"status": "error", "message": "Unknown error"}
+        elif self.mode == 'backtest':
+            return self._simulate_execution(decision_event, market_price)
 
-    def get_order_status(self, order_id: str, symbol: str) -> dict:
+        return None
+
+    def _simulate_execution(
+        self,
+        decision_event: PortfolioDecisionEvent,
+        market_price: float
+    ) -> OrderExecutionEvent:
         """
-        Получает текущий статус ордера.
-        
-        Args:
-            order_id (str): ID ордера.
-            symbol (str): Торговая пара.
-
-        Returns:
-            dict: Словарь со статусом ордера.
+        Simulates the execution of an order for backtesting.
         """
-        if not self.exchange:
-            return {"status": "error", "message": "Exchange connection failed"}
-        
-        try:
-            status = self.exchange.fetch_order_status(order_id, symbol)
-            return {"status": "success", "order_status": status}
-        except Exception as e:
-            logging.error(f"Ошибка при получении статуса ордера: {e}")
-            return {"status": "error", "message": "Failed to fetch order status"}
+        commission_rate = 0.001  # 0.1% commission
+        cost = decision_event.quantity * market_price
+        commission = cost * commission_rate
+
+        print(f"EXECUTOR (SIM): Executed {decision_event.action} of {decision_event.quantity:.4f} {decision_event.symbol} at {market_price}")
+
+        return OrderExecutionEvent(
+            timestamp=decision_event.timestamp,
+            symbol=decision_event.symbol,
+            action=decision_event.action,
+            quantity=decision_event.quantity,
+            fill_price=market_price,
+            commission=commission,
+            status='filled'
+        )

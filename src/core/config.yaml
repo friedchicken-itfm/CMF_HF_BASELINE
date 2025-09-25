@@ -1,0 +1,33 @@
+# configs/config.yaml
+---
+# Configuration for the Crypto Management Fund (CMF)
+
+# Trading settings
+trading:
+  exchange: 'binance'
+  pairs:
+    - 'BTC/USDT'
+    - 'ETH/USDT'
+  # Live or backtest
+  mode: 'backtest'
+
+# Risk management parameters
+risk:
+  # Max percentage of portfolio to allocate to a single asset
+  max_position_allocation: 0.25
+  # Overall portfolio risk tolerance (e.g., for VaR calculations)
+  risk_tolerance: 0.05
+
+# Backtesting settings
+backtester:
+  start_date: '2023-01-01T00:00:00Z'
+  end_date: '2023-01-31T23:59:59Z'
+  initial_capital: 100000.0
+  # Base currency for reporting
+  base_currency: 'USDT'
+
+# API Keys (use environment variables in production)
+api:
+  binance:
+    api_key: 'YOUR_API_KEY'
+    secret: 'YOUR_SECRET_KEY'

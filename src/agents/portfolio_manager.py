@@ -1,77 +1,91 @@
-# -*- coding: utf-8 -*-
-
+# src/agents/portfolio_manager.py
 """
-Модуль для управления портфелем.
-
-Этот модуль является "исполнителем" стратегии. Он получает одобренные
-сигналы от `risk_manager`, принимает окончательные решения и
-отправляет приказы на исполнение в `order_executor`. Он отвечает за
-оптимальное распределение активов и балансировку портфеля.
-
-Основные функции:
-- Принятие решений: На основе сигналов и текущего состояния портфеля
-  принимает окончательное решение о покупке, продаже или удержании.
-- Оптимизация портфеля: Определяет оптимальное распределение капитала
-  между активами, используя методы, такие как теория Марковица или
-  Reinforcement Learning, чтобы максимизировать доходность при заданном риске.
-- Генерация приказов: Формирует конкретные торговые приказы
-  (тип, объем, цена) для `order_executor`.
-- Мониторинг портфеля: Отслеживает текущие позиции, прибыль/убытки и
-  производит ребалансировку при необходимости.
-
-Пример использования:
-portfolio_manager = PortfolioManager()
-orders = portfolio_manager.decide_and_generate_orders(approved_signals)
+Manages the portfolio, making final decisions on trades.
 """
+from typing import Dict, Optional
+from src.core.events import RiskAdjustedSignalEvent, PortfolioDecisionEvent
+
 class PortfolioManager:
     """
-    Класс для управления капиталом и принятия решений об исполнении ордеров.
-
-    Этот агент принимает окончательные решения на основе одобренных
-    сигналов и состояния портфеля.
+    Constructs the target portfolio based on risk-adjusted signals
+    and generates orders to align the current portfolio with the target.
     """
 
-    def __init__(self, initial_capital: float):
+    def __init__(self, initial_capital: float, base_currency: str = 'USDT'):
         """
-        Инициализирует PortfolioManager с начальным капиталом.
-        
-        Args:
-            initial_capital (float): Исходный капитал.
-        """
-        self.initial_capital = initial_capital
-        self.portfolio = {'cash': initial_capital, 'positions': {}}
+        Initializes the PortfolioManager.
 
-    def generate_orders(self, approved_signals: dict) -> list:
-        """
-        Формирует торговые приказы на основе одобренных сигналов.
-        
         Args:
-            approved_signals (dict): Сигналы, прошедшие проверку рисков.
-            
+            initial_capital: The starting capital in base currency.
+            base_currency: The base currency of the portfolio.
+        """
+        self.base_currency = base_currency
+        self.current_holdings = {base_currency: initial_capital}
+        self.total_value = initial_capital
+        print(f"PortfolioManager: Initialized with {initial_capital} {base_currency}.")
+
+    def update_holdings_from_fill(self, symbol: str, action: str, quantity: float, fill_price: float, commission: float):
+        """
+        Updates portfolio holdings after an order is filled.
+        """
+        asset, quote = symbol.split('/')
+        cost = quantity * fill_price
+
+        if action == 'buy':
+            self.current_holdings[self.base_currency] -= (cost + commission)
+            self.current_holdings[asset] = self.current_holdings.get(asset, 0) + quantity
+        elif action == 'sell':
+            self.current_holdings[self.base_currency] += (cost - commission)
+            self.current_holdings[asset] = self.current_holdings.get(asset, 0) - quantity
+
+    def make_decision(
+        self,
+        risk_event: RiskAdjustedSignalEvent,
+        market_price: float
+    ) -> Optional[PortfolioDecisionEvent]:
+        """
+        Generates a specific trade decision.
+
+        Args:
+            risk_event: The risk-adjusted signal.
+            market_price: The current price of the asset.
+
         Returns:
-            list: Список приказов для OrderExecutor.
+            A PortfolioDecisionEvent to be executed, or None.
         """
-        orders = []
-        for symbol, signal in approved_signals.items():
-            if signal == 'BUY':
-                # Пример логики: купить на 10% от текущего кэша
-                order_amount = self.portfolio['cash'] * 0.1
-                orders.append({'symbol': symbol, 'side': 'BUY', 'amount': order_amount})
-            elif signal == 'SELL':
-                # Пример логики: продать всю позицию
-                if symbol in self.portfolio['positions']:
-                    orders.append({'symbol': symbol, 'side': 'SELL', 'amount': self.portfolio['positions'][symbol]})
-        print(f"Сформированы приказы: {orders}")
-        return orders
-
-    def update_portfolio(self, order_result: dict):
-        """
-        Обновляет состояние портфеля после исполнения приказа.
+        asset, quote = risk_event.symbol.split('/')
+        current_asset_holding = self.current_holdings.get(asset, 0)
         
-        Args:
-            order_result (dict): Результат исполнения приказа.
-        """
-        print(f"Портфель обновлен на основе результата: {order_result}")
-        # Логика обновления кэша и позиций
-        # self.portfolio['cash'] -= order_result['cost']
-        # self.portfolio['positions'][order_result['symbol']] = ...
+        # This is a simplified calculation of total portfolio value
+        # A real implementation would update prices for all assets
+        self.total_value = self.current_holdings[self.base_currency] + current_asset_holding * market_price
+
+        target_value = self.total_value * risk_event.adjusted_size
+        target_quantity = target_value / market_price
+        
+        current_value = current_asset_holding * market_price
+        
+        decision = None
+        if risk_event.signal_type == 'buy' and current_value < target_value:
+            quantity_to_buy = target_quantity - current_asset_holding
+            if quantity_to_buy * market_price <= self.current_holdings[self.base_currency]:
+                decision = PortfolioDecisionEvent(
+                    timestamp=risk_event.timestamp,
+                    symbol=risk_event.symbol,
+                    action='buy',
+                    quantity=quantity_to_buy
+                )
+                print(f"PortfolioManager: DECISION - BUY {quantity_to_buy:.4f} {asset}")
+
+        elif risk_event.signal_type == 'sell' and current_asset_holding > 0:
+            # Simple logic: sell the entire position on a sell signal.
+            # A more complex strategy would sell a portion.
+            decision = PortfolioDecisionEvent(
+                timestamp=risk_event.timestamp,
+                symbol=risk_event.symbol,
+                action='sell',
+                quantity=current_asset_holding
+            )
+            print(f"PortfolioManager: DECISION - SELL {current_asset_holding:.4f} {asset}")
+
+        return decision

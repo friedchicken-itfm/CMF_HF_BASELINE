@@ -1,83 +1,65 @@
-# -*- coding: utf-8 -*-
-
+# src/data_fetcher/data_collector.py
 """
-Модуль для сбора данных.
+Collects market data.
 
-Этот модуль отвечает за получение всех необходимых данных для работы
-системы. Он является "поставщиком" данных, подключаясь к различным
-источникам (биржи, API, базы данных) и собирая информацию.
-
-Основные функции:
-- Подключение к источникам: Устанавливает соединение с API бирж (Binance,
-  Coinbase и т.д.) или другими источниками данных (например, для он-чейн
-  данных или данных по настроениям).
-- Загрузка данных: Загружает исторические и потоковые данные в реальном времени.
-- Обработка ошибок: Обрабатывает ошибки при загрузке данных (например,
-  ограничение скорости запросов).
-- Форматирование данных: Приводит данные к единому, удобному для
-  дальнейшей обработки формату.
-- Хранение: Сохраняет данные в локальную базу данных или кэш.
-
-Пример использования:
-data_collector = DataCollector()
-ohlcv_data = data_collector.fetch_historical_data('BTC/USDT', '1h')
+For this prototype, it generates mock data. In a real-world scenario,
+this module would connect to a cryptocurrency exchange API (e.g., Binance).
 """
+import numpy as np
 import pandas as pd
-import requests
+from datetime import datetime, timedelta
+from typing import Generator, List
+from src.core.events import MarketDataEvent
+from src.core.config import config
 
 class DataCollector:
-    """
-    Класс для сбора данных с различных источников, таких как биржи и API.
+    """Generates a stream of market data for backtesting."""
 
-    Этот класс отвечает за загрузку исторических и реальных данных,
-    а также он-чейн и сентимент-данных, необходимых для работы
-    торговой системы.
-    """
-
-    def __init__(self, api_key: str, api_secret: str):
+    def __init__(self, symbols: List[str], start_date: str, end_date: str):
         """
-        Инициализирует DataCollector с API-ключами.
-        
+        Initializes the mock data generator.
+
         Args:
-            api_key (str): Ключ API для подключения к бирже.
-            api_secret (str): Секретный ключ API.
+            symbols: A list of trading symbols (e.g., ['BTC/USDT']).
+            start_date: The start date for the data stream (ISO format).
+            end_date: The end date for the data stream (ISO format).
         """
-        self.api_key = api_key
-        self.api_secret = api_secret
-        # Здесь может быть инициализация клиентов для бирж
-        # self.exchange_client = some_exchange_api_client(api_key, api_secret)
+        self.symbols = symbols
+        self.start_dt = pd.to_datetime(start_date)
+        self.end_dt = pd.to_datetime(end_date)
+        self.current_dt = self.start_dt
+        self.base_prices = {symbol: np.random.uniform(20000, 40000) for symbol in symbols}
 
-    def fetch_historical_data(self, symbol: str, timeframe: str, start_date: str, end_date: str) -> pd.DataFrame:
+    def get_data_stream(self) -> Generator[MarketDataEvent, None, None]:
         """
-        Загружает исторические данные (OHLCV) для заданной пары.
-        
-        Args:
-            symbol (str): Торговая пара (например, 'BTCUSDT').
-            timeframe (str): Временной интервал (например, '1d', '4h').
-            start_date (str): Начальная дата.
-            end_date (str): Конечная дата.
-            
-        Returns:
-            pd.DataFrame: DataFrame с историческими данными.
-        """
-        print(f"Загрузка исторических данных для {symbol}...")
-        # Логика запроса к API биржи
-        # Например:
-        # data = self.exchange_client.get_candles(symbol, timeframe, start_date, end_date)
-        # return pd.DataFrame(data)
-        return pd.DataFrame() # Заглушка
+        A generator that yields new market data events at each timestep.
 
-    def fetch_sentiment_data(self, query: str) -> pd.DataFrame:
+        Yields:
+            A MarketDataEvent object.
         """
-        Собирает данные по настроениям (sentiment) из внешних источников.
-        
-        Args:
-            query (str): Запрос для поиска (например, 'bitcoin').
-            
-        Returns:
-            pd.DataFrame: DataFrame с данными по настроениям.
-        """
-        print(f"Сбор сентимент-данных для '{query}'...")
-        # Логика запроса к API для анализа сентимента
-        # data = requests.get(f"https://some_sentiment_api.com/search?q={query}")
-        return pd.DataFrame() # Заглушка
+        print("DataCollector: Starting data stream...")
+        while self.current_dt <= self.end_dt:
+            for symbol in self.symbols:
+                # Simulate price movement
+                base_price = self.base_prices[symbol]
+                change_pct = np.random.normal(0.0001, 0.01)
+                open_price = base_price * (1 + change_pct)
+                high_price = open_price * (1 + np.random.uniform(0, 0.01))
+                low_price = open_price * (1 - np.random.uniform(0, 0.01))
+                close_price = np.random.uniform(low_price, high_price)
+                volume = np.random.uniform(100, 1000)
+
+                self.base_prices[symbol] = close_price # Update for next tick
+
+                yield MarketDataEvent(
+                    timestamp=self.current_dt,
+                    symbol=symbol,
+                    open=open_price,
+                    high=high_price,
+                    low=low_price,
+                    close=close_price,
+                    volume=volume,
+                )
+            # Move to the next hour
+            self.current_dt += timedelta(hours=1)
+        print("DataCollector: Data stream finished.")

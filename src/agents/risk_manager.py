@@ -1,67 +1,49 @@
-# -*- coding: utf-8 -*-
-
+# src/agents/risk_manager.py
 """
-Модуль для управления и оценки рисков.
-
-Этот модуль отвечает за оценку потенциальных рисков, связанных с торговыми
-сигналами, сгенерированными `signal_agent`. Его основная задача — защитить
-портфель от чрезмерных потерь, отклоняя или корректируя сигналы,
-которые могут привести к высокому риску.
-
-Основные функции:
-- Оценка риска: Рассчитывает риски для каждого актива и портфеля в целом,
-  используя метрики, такие как VaR (Value at Risk) и CVar (Conditional Value at Risk).
-- Анализ корреляции: Оценивает, как активы в портфеле движутся относительно друг друга,
-  чтобы предотвратить чрезмерную концентрацию риска.
-- Применение ограничений: Проверяет, не нарушают ли сигналы заданные
-  ограничения по риску (например, максимальный просадок, максимальная
-  позиция по одному активу).
-- Коррекция сигналов: В случае высокого риска может уменьшить объем
-  предлагаемой сделки или полностью отклонить сигнал.
-- Передача сигналов: Отправляет скорректированные или одобренные сигналы
-  в `portfolio_manager`.
-
-Пример использования:
-risk_manager = RiskManager()
-approved_signals = risk_manager.evaluate_risks(signals, portfolio_state)
+Adjusts trading signals based on portfolio risk metrics.
 """
-import pandas as pd
+from typing import Optional
+from src.core.events import SignalEvent, RiskAdjustedSignalEvent
+from src.core.config import config
 
 class RiskManager:
     """
-    Класс для оценки и управления рисками портфеля.
-
-    Этот агент проверяет сигналы на соответствие заданным
-    лимитам риска и корректирует их при необходимости.
+    Applies risk management rules to raw trading signals.
     """
+    def __init__(self):
+        """Initializes the RiskManager."""
+        self.max_position_allocation = config.get('risk.max_position_allocation', 0.25)
+        print(f"RiskManager: Initialized with max position allocation: {self.max_position_allocation}")
 
-    def __init__(self, max_drawdown: float = 0.1, max_position_size: float = 0.2):
+    def assess_risk(self, signal_event: SignalEvent) -> Optional[RiskAdjustedSignalEvent]:
         """
-        Инициализирует RiskManager с лимитами риска.
-        
-        Args:
-            max_drawdown (float): Максимально допустимый просадок портфеля.
-            max_position_size (float): Максимальный размер позиции для одного актива.
-        """
-        self.max_drawdown = max_drawdown
-        self.max_position_size = max_position_size
+        Assesses the risk of a signal and adjusts its parameters.
 
-    def evaluate_signals(self, signals: dict, portfolio_state: dict) -> dict:
-        """
-        Оценивает риски, связанные с торговыми сигналами.
-        
         Args:
-            signals (dict): Сигналы от SignalAgent.
-            portfolio_state (dict): Текущее состояние портфеля.
-            
+            signal_event: The raw signal event from the SignalAgent.
+
         Returns:
-            dict: Скорректированные и одобренные сигналы.
+            A RiskAdjustedSignalEvent with a calculated position size.
         """
-        print("Оценка рисков...")
-        # Логика проверки на соответствие лимитам
-        # Например, проверка на корреляцию между активами
-        approved_signals = signals.copy()
-        # Корректировка, если сигнал слишком рискованный
-        # if portfolio_state['total_value'] * approved_signals['BTCUSDT'] > self.max_position_size:
-        #     approved_signals['BTCUSDT'] = 'HOLD' # Отклонить сигнал
-        return approved_signals
+        # --- Dummy Logic ---
+        # This logic determines position size based on signal strength
+        # and a hard-coded maximum allocation.
+        # A real system would use VaR, correlation matrices, etc.
+
+        if signal_event.signal_type == 'hold':
+            return None
+
+        # Scale position size by signal strength
+        proposed_size = self.max_position_allocation * signal_event.strength
+
+        # Ensure the size does not exceed the maximum limit
+        adjusted_size = min(proposed_size, self.max_position_allocation)
+
+        print(f"RiskManager: Adjusted {signal_event.symbol} size to {adjusted_size:.2f} of portfolio")
+
+        return RiskAdjustedSignalEvent(
+            timestamp=signal_event.timestamp,
+            symbol=signal_event.symbol,
+            signal_type=signal_event.signal_type,
+            adjusted_size=adjusted_size
+        )
